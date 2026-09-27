@@ -32,8 +32,11 @@ export async function loadPhotorealisticTileset(
   const errors = [];
 
   const attempts = [];
-  if (googleKey) attempts.push({ route: 'google-direct', googleKey });
+  // Cesium ion is the most reliable hosted path for the public deployment.
+  // It avoids Google Maps billing/region restrictions when a valid ion token
+  // is configured, while the direct Google path remains available as fallback.
   if (ionToken) attempts.push({ route: 'google-ion', googleKey: undefined });
+  if (googleKey) attempts.push({ route: 'google-direct', googleKey });
 
   for (const attempt of attempts) {
     try {
