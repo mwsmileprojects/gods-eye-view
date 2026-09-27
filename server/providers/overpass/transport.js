@@ -79,14 +79,9 @@ async function fetchOverpassPayload(
     simplify = simplifyOverpassPayloadBody,
   } = {},
 ) {
-  let lastError = null;
-  let lastRateLimitPayload = null;
-  let lastRefusalPayload = null;
-
-  for (const endpoint of endpoints) {
+  const attempts = endpoints.map(async (endpoint) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
-
     try {
       const upstream = await fetchImpl(endpoint, {
         method: 'POST',
@@ -97,7 +92,6 @@ async function fetchOverpassPayload(
         body,
         signal: controller.signal,
       });
-
       const responseBody = await readBody(upstream, maxResponseBytes);
       const contentType =
         upstream.headers.get('content-type') || 'application/json';
@@ -106,53 +100,33 @@ async function fetchOverpassPayload(
         status === 429 || overpassLooksRateLimited(responseBody);
       const runtimeError = overpassLooksRuntimeError(responseBody);
       const payload = {
-        status,
-        body: responseBody,
-        contentType,
-        endpoint,
-        rateLimited,
-        runtimeError,
+        status, body: responseBody, contentType, endpoint,
+        rateLimited, runtimeError,
       };
-
-      if (rateLimited) {
-        lastRateLimitPayload = payload;
-        continue;
+      if (rateLimited || runtimeError || status < 200 || status >= 300) {
+        return { ok: false, payload };
       }
-      // A 200 body carrying a runtime error / timeout is a transient upstream
-      // failure — skip to the next mirror rather than returning or caching it.
-      if (runtimeError) {
-        lastError = new Error(`Overpass runtime error (${endpoint})`);
-        continue;
-      }
-      // Anything but 2xx is this mirror declining, not an answer. Only 5xx used
-      // to rotate, so a 4xx ended the fan-out and was returned — and cached —
-      // as data: a mirror refusing this client answers 406 while the others
-      // answer 200 to the very same request, so every Overpass-backed layer
-      // failed on an error page with healthy mirrors untried. The first
-      // refusal is kept so a genuinely bad query still reports what upstream
-      // said, but only after every mirror has had the chance to answer it.
-      if (status < 200 || status >= 300) {
-        if (!lastRefusalPayload) lastRefusalPayload = payload;
-        lastError = new Error(
-          `Overpass upstream returned ${status} (${endpoint})`,
-        );
-        continue;
-      }
-
-      // Success: decimate giant boundary geometry before it reaches the cache,
-      // the disk, or the client (what makes the 32 MB read cap safe to hold).
       payload.body = simplify(payload.body);
-      return payload;
+      return { ok: true, payload };
     } catch (error) {
-      lastError = error;
+      return { ok: false, error, endpoint };
     } finally {
       clearTimeout(timeoutId);
     }
-  }
+  });
 
-  if (lastRateLimitPayload) return lastRateLimitPayload;
-  if (lastRefusalPayload) return lastRefusalPayload;
-  throw lastError || new Error('All Overpass upstreams failed');
+  const results = await Promise.all(attempts);
+  const success = results.find((result) => result.ok);
+  if (success) return success.payload;
+
+  const rateLimited = results.find((result) => result.payload?.rateLimited);
+  if (rateLimited) return rateLimited.payload;
+
+  const refusal = results.find((result) => result.payload);
+  if (refusal) return refusal.payload;
+
+  throw (
+    results.find((result) => result.error)?.error ||
+    new Error('All Overpass upstreams failed')
+  );
 }
-
-export { overpassPayloadIsData, fetchOverpassPayload };
