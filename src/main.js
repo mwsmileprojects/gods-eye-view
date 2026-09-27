@@ -5,6 +5,9 @@ const application = createStandaloneApplication({
   googleApiKey: import.meta.env.GOOGLE_MAPS_API_KEY,
   cesiumToken: import.meta.env.CESIUM_ION_TOKEN,
   allowQaRegistration: import.meta.env.DEV,
+  // Public Vercel deployment is intentionally keyless. Voice is an optional
+  // OpenAI feature and stays enabled for local development only.
+  voice: { disabled: import.meta.env.PROD },
 });
 
 application.start().catch((error) => {
