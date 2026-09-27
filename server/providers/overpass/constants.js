@@ -1,8 +1,5 @@
 import path from 'node:path';
 
-// ---------------------------------------------------------------------------
-// Overpass API proxy constants and cache state
-// ---------------------------------------------------------------------------
 const OVERPASS_USER_AGENT =
   'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods-eye-view)';
 
@@ -17,8 +14,6 @@ const OVERPASS_CACHE_MS = 86_400_000;
 const OVERPASS_DISK_TTL_MS = 7 * 86_400_000;
 const OVERPASS_BOUNDARY_DISK_TTL_MS = 30 * 86_400_000;
 
-// Vercel Functions have a read-only filesystem; use /tmp for ephemeral cache.
-// Local development still gets a project-local cache.
 const OVERPASS_DISK_DIR =
   process.env.VERCEL === '1'
     ? '/tmp/gev-cache/overpass'
@@ -37,10 +32,10 @@ const OVERPASS_MAX_AROUND_M = 50000;
 const OVERPASS_MAX_BBOX_DEG = 12;
 const OVERPASS_ELEMENT_TYPES = 'node|way|relation|nwr|nw|nr|wr|rel';
 const OVERPASS_SELECTOR_RE = new RegExp(
-  `\\\\b(?:${OVERPASS_ELEMENT_TYPES}|area)\\\\b`,
+  `\\b(?:${OVERPASS_ELEMENT_TYPES}|area)\\b`,
 );
 const OVERPASS_AREA_ELEMENT_RE = new RegExp(
-  `\\\\b(?:${OVERPASS_ELEMENT_TYPES})\\\\s*\\\\(\\\\s*area\\\\b`,
+  `\\b(?:${OVERPASS_ELEMENT_TYPES})\\s*\\(\\s*area\\b`,
   'i',
 );
 const OVERPASS_BBOX_RE =
