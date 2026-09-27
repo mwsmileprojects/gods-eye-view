@@ -256,11 +256,11 @@ async function fetchAdsbLolPointFallback(req) {
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       try {
         const upstream = await fetch(
-          `https://api.adsb.lol/v2/lat/${roundedLat}/lon/${roundedLon}/dist/${ADSBLOL_POINT_RADIUS_NM}`,
+          `https://opendata.adsb.fi/api/v3/lat/${roundedLat}/lon/${roundedLon}/dist/${ADSBLOL_POINT_RADIUS_NM}`,
           {
             headers: {
               Accept: 'application/json',
-              'User-Agent': 'gods-eye-view-adsblol-regional-fallback/1.0',
+              'User-Agent': 'gods-eye-view-adsbfi-regional-fallback/1.0',
             },
             signal: controller.signal,
           },
@@ -305,10 +305,10 @@ async function serveAdsbLolPointFallback(req, res, requestedMode, reason) {
     ...buildOpenSkyHeaders({
       cacheStatus: fallback.cacheStatus,
       requestedMode,
-      usedMode: 'adsblol-regional',
+      usedMode: 'adsbfi-regional',
       reason,
     }),
-    'X-Flight-Source': 'adsb.lol',
+    'X-Flight-Source': 'adsb.fi',
     'X-Flight-Coverage': `${ADSBLOL_POINT_RADIUS_NM}nm regional fallback`,
     'X-Flight-Count': String(fallback.count),
   });
