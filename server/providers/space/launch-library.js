@@ -22,11 +22,9 @@ export function rocketLaunchesProxy() {
   const ttlMs = LL2_CACHE_TTL_MS;
   const maxResponseBytes = 12 * 1024 * 1024;
   const maxDiskCacheBytes = 24 * 1024 * 1024;
-  const cachePath = path.join(
-    process.cwd(),
-    '.gev-cache',
-    'launch-library-2-v2.3.json',
-  );
+  const cachePath = process.env.VERCEL === '1'
+    ? '/tmp/gev-cache/launch-library-2-v2.3.json'
+    : path.join(process.cwd(), '.gev-cache', 'launch-library-2-v2.3.json');
   let cache = null;
   let diskLoaded = false;
   const inFlight = new Map();
@@ -70,7 +68,7 @@ export function rocketLaunchesProxy() {
     const end = new Date();
     const url = launchLibraryRecentUrl(end);
     const upstream = await fetch(url, {
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(8000),
       headers: launchLibraryRequestHeaders(),
     });
     const body = await readResponseTextCapped(upstream, maxResponseBytes);
