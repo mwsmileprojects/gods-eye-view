@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "find api -type f ! -name '[...path].js' -delete && vite build",
+  "outputDirectory": "dist"
+}
