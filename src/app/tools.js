@@ -157,6 +157,10 @@ export function createApplicationTools({
   defer(() => {
     if (window.__godsEyeView === debug) delete window.__godsEyeView;
   });
+  if (voice?.disabled) {
+    return { sceneDirector, annotations, voiceCommands: null };
+  }
+
   const voiceCommands = initGevVoiceCommands({
     ...voice,
     floorServices: operations.surface.groundFloor,
