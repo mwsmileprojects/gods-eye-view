@@ -20,7 +20,7 @@ const OVERPASS_DISK_DIR =
     : path.join(process.cwd(), '.gev-cache', 'overpass');
 
 // Vercel Hobby functions are short-lived; each mirror must fail quickly.
-const OVERPASS_TIMEOUT_MS = 2200;
+const OVERPASS_TIMEOUT_MS = 5000;
 const OVERPASS_CACHE_MAX_ENTRIES = 120;
 const OVERPASS_MAX_BODY_BYTES = 24 * 1024;
 const OVERPASS_MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
