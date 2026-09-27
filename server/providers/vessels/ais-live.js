@@ -46,6 +46,57 @@ const AISSTREAM_DOWN_RETRY_MS = 900_000;
 const AISSTREAM_AUTH_PROBE_MS = 3_600_000;
 /** How often the watchdog re-evaluates without request traffic. */
 const AISSTREAM_TICK_MS = 15_000;
+const OPENWATERS_URL = 'https://ais.openwaters.io/v1/vessels';
+const OPENWATERS_BOXES = Object.freeze([
+  [-5, -15, 5, -5], [5, -5, 15, 5], [-5, 5, 5, 15], [5, 15, 15, 25],
+  [25, -20, 35, -10], [35, -10, 45, 0], [30, 0, 40, 10],
+  [0, 20, 10, 30], [10, 30, 20, 40], [-35, 15, -25, 25],
+  [20, 120, 30, 130], [30, -130, 40, -120],
+  [35, -80, 45, -70], [40, -10, 50, 0],
+  [45, 5, 55, 15], [50, 120, 60, 130],
+]);
+
+async function openWatersSnapshot(maxRows) {
+  const controllerRequests = OPENWATERS_BOXES.map(async ([minLat, minLon, maxLat, maxLon]) => {
+    const url = new URL(OPENWATERS_URL);
+    url.searchParams.set('bbox', [minLat, minLon, maxLat, maxLon].join(','));
+    const response = await fetch(url, {
+      headers: { Accept: 'application/geo+json, application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) throw new Error(`Open Waters HTTP ${response.status}`);
+    const payload = await response.json();
+    return Array.isArray(payload?.features) ? payload.features : [];
+  });
+  const settled = await Promise.allSettled(controllerRequests);
+  const byMmsi = new Map();
+  for (const result of settled) {
+    if (result.status !== 'fulfilled') continue;
+    for (const feature of result.value) {
+      const coords = feature?.geometry?.coordinates;
+      const p = feature?.properties || {};
+      const mmsi = String(p.mmsi ?? feature?.id ?? '').trim();
+      const lon = Number(coords?.[0]);
+      const lat = Number(coords?.[1]);
+      if (!mmsi || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      byMmsi.set(mmsi, {
+        lat, lon, mmsi,
+        name: p.name || `MMSI ${mmsi}`,
+        type: p.type ?? null,
+        speed: Number.isFinite(Number(p.sog)) ? Number(p.sog) : null,
+        course: Number.isFinite(Number(p.cog)) ? Number(p.cog) : null,
+        heading: Number.isFinite(Number(p.heading)) ? Number(p.heading) : null,
+        last_position_UTC: p.seen || null,
+        last_position_epoch: Date.parse(p.seen || '') / 1000 || Math.floor(Date.now() / 1000),
+        _updatedAt: Date.now(),
+      });
+    }
+  }
+  const rows = [...byMmsi.values()].sort((x, y) => y._updatedAt - x._updatedAt);
+  return rows.slice(0, maxRows).map(({ _updatedAt, ...row }) => row);
+}
+
+
 
 /**
  * @type {ReturnType<typeof createAisStreamAdapter>|null}
@@ -73,8 +124,18 @@ export function aisLiveProxy() {
   function install(middlewares) {
     middlewares.use('/api/ais-live', async (req, res) => {
       try {
-        ensureAisStreamConnection();
         const incoming = new URL(req.url || '', 'http://localhost');
+        if (!process.env.AISSTREAM_API_KEY && incoming.pathname === '/api/ais-live') {
+          const maxRows = clampInt(incoming.searchParams.get('maxRows'), 1, AISSTREAM_CACHE_MAX, AISSTREAM_CACHE_MAX);
+          const rows = await openWatersSnapshot(maxRows);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('X-Vessel-Source', 'Open Waters');
+          res.end(JSON.stringify({ rows, source: 'Open Waters', status: 'live', error: null, refreshing: false, newestPositionAt: newestAisPositionAt(rows), lastMessageAt: newestAisPositionAt(rows), silentForMs: 0, reconnectAttempt: 0, nextAttemptAt: null, staleAfterMs: 120000, watchdog: 'rest-snapshot' }));
+          return;
+        }
+        ensureAisStreamConnection();
 
         // Track sub-route MUST be handled before the rows snapshot — this
         // mount prefix-matches every subpath, so without this branch
