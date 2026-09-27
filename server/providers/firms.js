@@ -50,6 +50,47 @@ export function firmsProxy() {
 
   const mapKey = () => String(process.env.FIRMS_MAP_KEY || '').trim();
 
+  async function fetchEonetWildfires() {
+    const url = new URL('https://eonet.gsfc.nasa.gov/api/v3/events/geojson');
+    url.searchParams.set('category', 'wildfires');
+    url.searchParams.set('status', 'open');
+    url.searchParams.set('days', '7');
+    url.searchParams.set('limit', '500');
+    const res = await fetch(url, {
+      headers: { Accept: 'application/geo+json, application/json' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) throw new Error(`EONET HTTP ${res.status}`);
+    const payload = await res.json();
+    const fires = [];
+    for (const feature of Array.isArray(payload?.features) ? payload.features : []) {
+      const coords = feature?.geometry?.coordinates;
+      const points = feature?.geometry?.type === 'Point'
+        ? [coords]
+        : feature?.geometry?.type === 'MultiPoint'
+          ? coords
+          : [];
+      for (const point of points) {
+        const lon = Number(point?.[0]);
+        const lat = Number(point?.[1]);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+        const date = String(feature?.properties?.date || new Date().toISOString());
+        const d = new Date(date);
+        fires.push({
+          lat, lon, frp: 0, confidence: 'nominal', brightness: 0,
+          daynight: 'D', acqDate: d.toISOString().slice(0, 10),
+          acqTime: d.toISOString().slice(11, 16).replace(':', ''),
+          instrument: 'EONET', satellite: 'NASA EONET',
+        });
+      }
+    }
+    return {
+      fetchedAt: Date.now(), stale: false, ttlMs: 15 * 60_000,
+      sources: [{ source: 'NASA EONET wildfires', count: fires.length, ok: true }],
+      count: fires.length, fires,
+    };
+  }
+
   async function readDiskOnce() {
     if (diskChecked) return;
     diskChecked = true;
@@ -213,7 +254,12 @@ export function firmsProxy() {
         }
 
         if (!key) {
-          sendJson(503, { error: 'no_key' });
+          try {
+            sendJson(200, await fetchEonetWildfires());
+          } catch (err) {
+            console.warn('[firms-proxy] EONET fallback failed:', err?.message || err);
+            sendJson(502, { error: 'fire fallback unavailable' });
+          }
           return;
         }
 
