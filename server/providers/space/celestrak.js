@@ -22,7 +22,7 @@ import { celestrakTleUrl } from '../../../src/data/spaceProviderRequests.js';
  */
 export function celestrakProxy() {
   const TLE_TTL_MS = 6 * 3600_000;
-  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_DIR = process.env.VERCEL === '1' ? '/tmp/gev-cache' : path.join(process.cwd(), '.gev-cache');
   const mem = new Map(); // group -> { at: epochMs, body: string }
   const inflight = new Map(); // group -> Promise<{at, body}|null>
 
@@ -51,7 +51,7 @@ export function celestrakProxy() {
   async function fetchUpstream(group) {
     const url = celestrakTleUrl(group);
     const res = await fetch(url.toString(), {
-      signal: AbortSignal.timeout(20000),
+      signal: AbortSignal.timeout(8000),
       // CelesTrak 403s bulk groups (e.g. `active`) unless the request carries a
       // descriptive User-Agent with a contact point.
       headers: {
